@@ -3,7 +3,7 @@ and condenses these rows into a single row with extra columns. The condensed row
 saved to a new Excel file. 
 
 @author: Ada Barach
-@version: 02/01/2023
+@version: 02/03/2023
 """
 
 import pandas as pd
@@ -24,15 +24,14 @@ def read_data_and_group(filepath):
     # read data
     df = pd.read_excel(filepath)
     
-    # add handling charge if srvchg is present and remove SRVCHG entries from section column
+    # add handling charge if srvchg is present
     df.insert(loc=df.columns.get_loc('cust_name_id'), column='Handling', value=['' for i in range(df.shape[0])])
     df['Handling'] = np.where(df.section=='SRVCHG', 20, None)
-    df = df.replace('SRVCHG', np.nan)
-    df['owed_amount'] = df['owed_amount'].replace(20, np.nan)
     
-    # drop unneeded columns: quantity, price_code, cost_per_seat, total_cost
-    drop_cols = ['quantity', 'price_code', 'cost_per_seat', 'total_cost']
-    df.drop(columns=drop_cols, inplace=True)
+    # clear out service charge rows - leaving acct_id (for grouping), description and name (don't want to lose any info)
+    small_df = df.drop(columns=['Handling', 'acct_id', 'description', 'name'])
+    small_df.loc[small_df['section'] == 'SRVCHG'] = None
+    df[small_df.columns] = small_df
     
     # group by acct_id as a set
     df = df.groupby('acct_id', as_index=False).agg(lambda x: list(x))
@@ -51,7 +50,7 @@ def condense(original_data: pd.DataFrame):
         pd.DataFrame: the condensed DataFrame
     """
     new_df = pd.DataFrame(original_data['acct_id'])
-    list_cols = ['first_seat', 'last_seat', 'row_name', 'section', 'owed_seat']
+    list_cols = ['first_seat', 'last_seat', 'row_name', 'section', 'owed_seat', 'price_code', 'cost_per_seat', 'total_cost']
 
     # rename owed_amount column to owed_seat
     if 'owed_amount' in original_data.columns:
@@ -83,7 +82,7 @@ def condense(original_data: pd.DataFrame):
     new_df.insert(new_df.columns.get_loc('Handling'), 'total_ticket_cost', new_df[list(new_df.filter(regex='owed_seat'))].sum(axis=1))
     
     # add total due column = total ticket_cost + handling in front of cust_name_id
-    new_df.insert(new_df.columns.get_loc('cust_name_id'), 'total_due', new_df['total_ticket_cost'] + new_df['Handling'])
+    new_df.insert(new_df.columns.get_loc('cust_name_id'), 'total_due', new_df['total_ticket_cost'] + new_df['Handling'].fillna(0))
     
     # reorder columns so that first_seat1, first_seat2, ..., last_seat1, last_seat2, ... is
     # first_seat1, last_seat1, first_seat2, last_seat2, ...
