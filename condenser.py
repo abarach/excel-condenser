@@ -154,6 +154,35 @@ def reorder_cols_alternate_seats(df: pd.DataFrame):
     return new_idx_order
 
 
+def append_sales_reps(df, sales_rep_file_path, output_diff):
+    """Performs a left merge on df and the data read from sales_rep_file_path. This means all rows
+    present in df will remain, and only those rows in sales_rep_file_path data that correspond to a row
+    in df will be added. 
+
+    Args:
+        df (pandas.DataFrame): The dataframe to merge onto
+        sales_rep_file_path (String): A file path to an Excel sheet containing the account rep information
+        output_diff (boolean): True if the program should print the acct_ids not merged. False otherwise.
+
+    Returns:
+        pandas.DataFrame: The dataframe corresponding to df + the columns from sales_rep_file_path
+    """
+    # open sales rep file and read
+    sr_df = pd.read_excel(sales_rep_file_path)
+    
+    appended = df.merge(sr_df, how='left', on='acct_id')
+    appended['add_date'] = appended['add_date'].dt.strftime('%m/%d/%Y')
+    
+    if output_diff:
+        merged = df.merge(sr_df, how='outer', indicator=True)
+        print('Acct ID present only in condensed:')
+        print(merged[merged['_merge'] == 'left_only']['acct_id'].tolist())
+        print()
+        print('Acct ID present only in sales rep:')
+        print(merged[merged['_merge'] == 'right_only']['acct_id'].tolist())
+    return df
+
+
 def parse_args():
     """Reads and stores command-line arguments.
 
@@ -164,6 +193,7 @@ def parse_args():
     parser.add_argument('--input_file', dest='input_file', required=True, type=str, help='file path for input excel file.')
     parser.add_argument('--output_file', dest='output_file', required=True, type=str, help='file path for output excel file.')
     parser.add_argument('--sheet_name', dest='sheet_name', required=False, default='Summary', help="The desired name of the worksheet for the outputted excel file.")
+    parser.add_argument('--sales_rep_file', dest='sales_rep_file', required=False, help="file path for the excel file containing sales rep information to append to the output excel file.")
     args = parser.parse_args()
     return args 
 
@@ -172,4 +202,8 @@ if __name__ == "__main__":
     args = parse_args()
     original_data = read_data_and_group(args.input_file)
     condensed_data = condense(original_data)
+    
+    if args.sales_rep_file is not None:
+        condensed_data = append_sales_reps(condensed_data, args.sales_rep_file, True)
+        
     write_output(args.output_file, args.sheet_name, condensed_data)
